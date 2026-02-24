@@ -13,6 +13,8 @@ import {
   Zap,
   CheckCircle,
   Radio,
+  Search,
+  X,
 } from "lucide-react";
 import { sampleTransactions, Transaction } from "@/data/mockData";
 import StatCard from "@/components/dashboard/StatCard";
@@ -121,6 +123,12 @@ const Dashboard = () => {
   const [simLocation, setSimLocation] = useState("domestic");
   const [simDevice, setSimDevice] = useState("known");
 
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterRisk, setFilterRisk] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string | null>(null);
+
   // Live feed
   useEffect(() => {
     if (isLive) {
@@ -185,6 +193,18 @@ const Dashboard = () => {
     { name: "High", value: transactions.filter(t => t.riskLevel === "high").length, color: "hsl(0, 84%, 60%)" },
     { name: "Critical", value: transactions.filter(t => t.riskLevel === "critical").length, color: "hsl(330, 81%, 60%)" },
   ];
+
+  // Filtered transactions
+  const filteredTransactions = transactions.filter(tx => {
+    if (filterRisk && tx.riskLevel !== filterRisk) return false;
+    if (filterStatus && tx.status !== filterStatus) return false;
+    if (filterType && tx.type !== filterType) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!tx.userName.toLowerCase().includes(q) && !tx.id.toLowerCase().includes(q) && !tx.merchant.toLowerCase().includes(q) && !tx.location.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   // Build hourly data from actual transactions
   const hourlyData = Array.from({ length: 24 }, (_, i) => {
@@ -376,18 +396,75 @@ const Dashboard = () => {
             Recent Transactions
             {isLive && <span className="w-2 h-2 rounded-full bg-risk-low animate-pulse-glow" />}
           </h3>
-          <span className="text-xs text-muted-foreground">{transactions.length} total</span>
+          <span className="text-xs text-muted-foreground">{filteredTransactions.length} of {transactions.length}</span>
         </div>
-        {transactions.length === 0 ? (
+
+        {/* Search & Filters */}
+        <div className="space-y-3 mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by name, ID, merchant, or location..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-9 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {/* Risk Level */}
+            <span className="text-xs text-muted-foreground self-center mr-1">Risk:</span>
+            {(["low", "medium", "high", "critical"] as const).map(level => (
+              <button key={level} onClick={() => setFilterRisk(filterRisk === level ? null : level)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium capitalize transition-colors ${filterRisk === level ? "bg-primary/20 text-primary border-primary/40" : "bg-secondary text-muted-foreground border-border hover:text-foreground"}`}>
+                {level}
+              </button>
+            ))}
+            <span className="w-px h-5 bg-border self-center mx-1" />
+            {/* Status */}
+            <span className="text-xs text-muted-foreground self-center mr-1">Status:</span>
+            {(["approved", "flagged", "blocked"] as const).map(s => (
+              <button key={s} onClick={() => setFilterStatus(filterStatus === s ? null : s)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium capitalize transition-colors ${filterStatus === s ? "bg-primary/20 text-primary border-primary/40" : "bg-secondary text-muted-foreground border-border hover:text-foreground"}`}>
+                {s}
+              </button>
+            ))}
+            <span className="w-px h-5 bg-border self-center mx-1" />
+            {/* Type */}
+            <span className="text-xs text-muted-foreground self-center mr-1">Type:</span>
+            {(["UPI", "Card", "NetBanking", "Wallet", "Loan"] as const).map(t => (
+              <button key={t} onClick={() => setFilterType(filterType === t ? null : t)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${filterType === t ? "bg-primary/20 text-primary border-primary/40" : "bg-secondary text-muted-foreground border-border hover:text-foreground"}`}>
+                {t}
+              </button>
+            ))}
+            {(filterRisk || filterStatus || filterType || searchQuery) && (
+              <>
+                <span className="w-px h-5 bg-border self-center mx-1" />
+                <button onClick={() => { setFilterRisk(null); setFilterStatus(null); setFilterType(null); setSearchQuery(""); }}
+                  className="text-xs px-2.5 py-1 rounded-full border border-risk-high/30 text-risk-high font-medium hover:bg-risk-high/10 transition-colors">
+                  Clear Filters
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {filteredTransactions.length === 0 ? (
           <div className="py-12 text-center">
             <CheckCircle className="w-12 h-12 text-risk-low mx-auto mb-3 opacity-50" />
-            <p className="text-foreground font-medium">No transactions</p>
-            <p className="text-sm text-muted-foreground">Use the simulator above or turn on Live feed to see transactions appear</p>
+            <p className="text-foreground font-medium">{transactions.length === 0 ? "No transactions" : "No matching transactions"}</p>
+            <p className="text-sm text-muted-foreground">{transactions.length === 0 ? "Use the simulator above or turn on Live feed to see transactions appear" : "Try adjusting your search or filters"}</p>
           </div>
         ) : (
           <div className="space-y-1 max-h-[500px] overflow-y-auto scrollbar-thin">
             <AnimatePresence>
-              {transactions.map((tx, i) => (
+              {filteredTransactions.map((tx, i) => (
                 <TransactionRow key={tx.id} transaction={tx} index={i} onClick={() => setSelectedTx(tx)} />
               ))}
             </AnimatePresence>
