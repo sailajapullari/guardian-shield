@@ -11,6 +11,7 @@ import Analytics from "./pages/Analytics";
 import RealCases from "./pages/RealCases";
 import HowItWorks from "./pages/HowItWorks";
 import Simulator from "./pages/Simulator";
+import TransactionHistory from "./pages/TransactionHistory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/real-cases" element={<RealCases />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/simulator" element={<Simulator />} />
+            <Route path="/transactions" element={<TransactionHistory />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

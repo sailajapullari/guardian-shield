@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Zap, Play, RotateCcw, AlertTriangle, CheckCircle, Ban } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { createOrder, verifyPayment } from "@/lib/payments";
 import RiskGauge from "@/components/dashboard/RiskGauge";
 
 interface SimResult {
@@ -12,11 +14,16 @@ interface SimResult {
 
 const Simulator = () => {
   const [amount, setAmount] = useState("5000");
+  const [userEmail, setUserEmail] = useState("test@example.com");
   const [type, setType] = useState("UPI");
   const [hour, setHour] = useState("14");
   const [location, setLocation] = useState("domestic");
   const [device, setDevice] = useState("known");
   const [result, setResult] = useState<SimResult | null>(null);
+  const [isPaying, setIsPaying] = useState(false);
+  const startTimeRef = useRef<number | null>(null);
+  const locationRef = useRef<string>("Unknown");
+  const deviceRef = useRef<string>("Unknown");
 
   const simulate = () => {
     let score = 0;
@@ -62,6 +69,119 @@ const Simulator = () => {
     setResult(null);
   };
 
+  const handlePayWithRazorpay = async () => {
+    const amt = parseInt(amount) || 0;
+    if (amt <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid amount before starting payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!userEmail) {
+      toast({
+        title: "Email required",
+        description: "Please enter an email address to track your transactions.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof window === "undefined" || !(window as any).Razorpay) {
+      toast({
+        title: "Razorpay not loaded",
+        description: "Please check your network and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsPaying(true);
+
+      startTimeRef.current = Date.now();
+      deviceRef.current =
+        typeof navigator !== "undefined" ? navigator.userAgent : "Unknown";
+
+      try {
+        const resp = await fetch("https://ipapi.co/json/");
+        if (resp.ok) {
+          const data = await resp.json();
+          const city = data.city || "";
+          const country = data.country_name || "";
+          locationRef.current = [city, country].filter(Boolean).join(", ") || "Unknown";
+        } else {
+          locationRef.current = "Unknown";
+        }
+      } catch {
+        locationRef.current = "Unknown";
+      }
+
+      const order = await createOrder(amt);
+
+      const options = {
+        key: order.razorpay_key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: "Guardian Shield",
+        description: "Test Payment",
+        order_id: order.order_id,
+        handler: async (response: any) => {
+          try {
+            const endTime = Date.now();
+            const timeSpent =
+              startTimeRef.current != null
+                ? (endTime - startTimeRef.current) / 1000
+                : 0;
+
+            const verification = await verifyPayment({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature,
+              amount: amt,
+              user_email: userEmail,
+              location: locationRef.current,
+              device_used: deviceRef.current,
+              time_spent: timeSpent,
+            });
+
+            toast({
+              title: "Payment successful",
+              description: `Payment ID: ${verification.payment_id || response.razorpay_payment_id}`,
+            });
+          } catch (error: any) {
+            toast({
+              title: "Verification failed",
+              description: error?.message || "Could not verify payment. Please contact support.",
+              variant: "destructive",
+            });
+          }
+        },
+        prefill: {
+          name: "Test User",
+          email: "test@example.com",
+          contact: "9999999999",
+        },
+        theme: {
+          color: "#0f172a",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (error: any) {
+      toast({
+        title: "Payment error",
+        description: error?.message || "Something went wrong while starting payment.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const statusIcon = result ? (
     result.fraudScore < 30 ? <CheckCircle className="w-5 h-5 text-risk-low" /> :
     result.fraudScore < 80 ? <AlertTriangle className="w-5 h-5 text-risk-medium" /> :
@@ -80,6 +200,19 @@ const Simulator = () => {
       {/* Input Form */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* User Email */}
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              Email for Transaction Tracking
+            </label>
+            <input
+              type="email"
+              value={userEmail}
+              onChange={e => setUserEmail(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
+              placeholder="you@example.com"
+            />
+          </div>
           {/* Amount */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Transaction Amount (₹)</label>
@@ -150,6 +283,13 @@ const Simulator = () => {
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg gradient-primary text-foreground hover:opacity-90 transition-opacity"
           >
             <Play className="w-4 h-4" /> Analyze Transaction
+          </button>
+          <button
+            onClick={handlePayWithRazorpay}
+            disabled={isPaying}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-emerald-600 text-emerald-50 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            <Zap className="w-4 h-4" /> {isPaying ? "Processing..." : "Test Razorpay Payment"}
           </button>
           <button
             onClick={reset}

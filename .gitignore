@@ -22,3 +22,23 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# =====================
+# Django / Python
+# =====================
+
+venv/
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.sqlite3
+db.sqlite3
+
+# Python build files
+build/
+develop-eggs/
+.eggs/
+*.egg-info/
